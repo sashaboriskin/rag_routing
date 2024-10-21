@@ -92,10 +92,6 @@ for index, row in tqdm(eval_dataset.iterrows()):
             tokens_with_context = model.tokenizer.encode(our_answer_with_context)
             all_decoded_tokens_with_context = [model.tokenizer.decode(tokens_with_context[ind]) for ind in range(len(tokens_with_context))]
             all_decoded_tokens_with_context = all_decoded_tokens_with_context[1:] #remove BOS token
-
-            # problems with answers that have length more than 100
-            if len(all_decoded_tokens_without_context) - len(ue_score_without_context) == 1: 
-                all_decoded_tokens_without_context = all_decoded_tokens_without_context[:-1] 
             
             barplot_uncertainty(
                 method_name, 
@@ -110,5 +106,5 @@ for index, row in tqdm(eval_dataset.iterrows()):
                 all_decoded_tokens_with_context, 
                 ue_score_with_context
             )
-    
+
 eval_dataset.to_csv('data/ue_scores_eval_dataset.csv', index=False)
