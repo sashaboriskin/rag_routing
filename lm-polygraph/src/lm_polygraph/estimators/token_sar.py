@@ -15,7 +15,7 @@ class TokenSAR(Estimator):
     """
 
     def __init__(self, verbose: bool = False):
-        super().__init__(["token_similarity", "greedy_log_likelihoods"], "sequence")
+        super().__init__(["token_similarity", "greedy_log_likelihoods"], "token")
         self.verbose = verbose
 
     def __str__(self):

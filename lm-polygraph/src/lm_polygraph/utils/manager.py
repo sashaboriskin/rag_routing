@@ -24,6 +24,49 @@ from lm_polygraph.estimators.estimator import Estimator
 from lm_polygraph.stat_calculators.stat_calculator import StatCalculator
 from lm_polygraph.utils.register_stat_calculators import register_stat_calculators
 
+import string
+import nltk
+from nltk.corpus import stopwords
+
+nltk.download('stopwords')
+stop_words = set(stopwords.words('english'))
+
+def clean_text(decoded_tokens: list, stop_words: set):
+    prepositions = ['the', 'a', 'in', 'on', 'at', 'since', 'for', 'ago', 'before', 'to', 'by', 'with', 'about', ',', '\n', '(', ')', "'", ':', '.', '"']
+    prepositions_with_space = [' ' + p for p in prepositions]
+    prepositions = prepositions + prepositions_with_space
+    clean_words = [word for word in decoded_tokens if word.lower() not in stop_words and word.lower() not in prepositions]
+    return clean_words
+
+def update_batch_stats(model, batch_stats):
+    decoded_tokens = [model.tokenizer.decode(batch_stats['greedy_tokens'][0][i]) for i in range(len(batch_stats['greedy_tokens'][0]))]
+    clean_words = clean_text(decoded_tokens, stop_words)
+    indices_to_keep = [i for i, token in enumerate(decoded_tokens) if token in clean_words]
+    batch_stats['greedy_tokens'] = [[token for i, token in enumerate(batch_stats['greedy_tokens'][0]) if i in indices_to_keep]]
+    batch_stats['greedy_log_probs'] = [
+        np.array([log_prob for i, log_prob in enumerate(batch_stats['greedy_log_probs'][0]) if i in indices_to_keep])
+    ]
+    batch_stats['greedy_log_likelihoods'] = [
+        [ll for i, ll in enumerate(batch_stats['greedy_log_likelihoods'][0]) if i in indices_to_keep]
+    ]
+    batch_stats['greedy_tokens_alternatives'] = [
+        [alternative for i, alternative in enumerate(batch_stats['greedy_tokens_alternatives'][0]) if i in indices_to_keep]
+    ]    
+    print('update_batch_stats', len(batch_stats['greedy_tokens'][0]))
+    return batch_stats
+    # batch_stats['token_similarity'] = [
+    #     [sim for i, sim in enumerate(batch_stats['token_similarity'][0]) if i in indices_to_keep]
+    # ]
+    # batch_stats['sample_tokens'] = [
+    #     [[token for i, token in enumerate(tokens) if i in indices_to_keep] for tokens in sample_tokens]
+    #     for sample_tokens in batch_stats['sample_tokens']
+    # ]
+    # batch_stats['sample_token_similarity'] = [
+    #     [similarity for i, similarity in enumerate(similarities) if i in indices_to_keep]
+    #     for similarities in batch_stats['sample_token_similarity'][0]
+    # ]
+    
+    return batch_stats
 
 def _order_calculators(
     stats: List[str],
@@ -168,6 +211,7 @@ def estimate_uncertainty(
         verbose=False,
     )
     man()
+    # breakpoint()
     ue = man.estimations[estimator.level, str(estimator)]
     texts = man.stats.get("greedy_texts", None)
     tokens = man.stats.get("greedy_tokens", None)
@@ -304,7 +348,7 @@ class UEManager:
         greedy = ["greedy_texts"]
         if not isinstance(self.model, BlackboxModel):
             greedy += ["greedy_tokens"]
-
+        # breakpoint()
         stats = (
             [s for e in self.estimators for s in e.stats_dependencies]
             + [s for m in generation_metrics for s in m.stats_dependencies]
@@ -443,7 +487,7 @@ class UEManager:
             batch_stats["model"] = self.model
 
             batch_stats["model"] = self.model
-
+            
             train_stats_keys = list(train_stats.keys())
             for stat in train_stats_keys:
                 batch_stats[stat] = train_stats.pop(stat)
@@ -451,9 +495,11 @@ class UEManager:
             background_train_stats_keys = list(background_train_stats.keys())
             for stat in background_train_stats_keys:
                 batch_stats[stat] = background_train_stats.pop(stat)
-
+            
             batch_stats = self.calculate(batch_stats, self.stat_calculators, inp_texts)
+            batch_stats = update_batch_stats(self.model, batch_stats)
 
+            #breakpoint()
             batch_estimations, bad_estimators = self.estimate(
                 batch_stats, self.estimators
             )
@@ -574,7 +620,7 @@ class UEManager:
                     continue
                 else:
                     raise e
-
+        #breakpoint()
         return batch_stats
 
     def estimate(
