@@ -3,10 +3,8 @@ from lm_polygraph.estimators import (
     MeanTokenEntropy, 
     TokenEntropy,
     MaximumSequenceProbability,
-    MaximumTokenProbability, 
     ClaimConditionedProbability, 
-    SentenceSAR, 
-    FisherRao
+    TokenSAR,
 )
 from lm_polygraph.utils.manager import estimate_uncertainty
 import pandas as pd
@@ -37,26 +35,22 @@ model = WhiteboxModel.from_pretrained(
 TokenEntropy_method = TokenEntropy()
 MeanTokenEntropy_method = MeanTokenEntropy()
 MaximumSequenceProbability_method = MaximumSequenceProbability()
-MaximumTokenProbability_method = MaximumTokenProbability()
 ClaimConditionedProbability_method = ClaimConditionedProbability()
-SentenceSAR_method = SentenceSAR()
-FisherRao_method = FisherRao()
+TokenSAR_method = TokenSAR()
 
 name2method = {
     'TokenEntropy': TokenEntropy_method,
     'MeanTokenEntropy': MeanTokenEntropy_method,
-    'MaximumSequenceProbability': MaximumSequenceProbability_method,
-    'MaximumTokenProbability': MaximumTokenProbability_method,
-    'ClaimConditionedProbability': ClaimConditionedProbability_method,
-    'SentenceSAR': SentenceSAR_method,
-    'FisherRao': FisherRao_method
+    #'MaximumSequenceProbability': MaximumSequenceProbability_method,
+    #'ClaimConditionedProbability': ClaimConditionedProbability_method,
+    #'TokenSAR': TokenSAR_method,
 }
 
-eval_dataset = pd.read_csv('data/rag_routing_eval_dataset.csv')
+eval_dataset = pd.read_csv('data/rag_routing_eval_dataset_context_perturbations.csv')
 
 for index, row in tqdm(eval_dataset.iterrows()):
     question = row['question']
-    context = row['context']
+    context = row['context_perturbations']
     
     for method_name in name2method.keys():
         print(f"Processing question {index}, method {method_name}")
@@ -65,46 +59,43 @@ for index, row in tqdm(eval_dataset.iterrows()):
             model, 
             name2method[method_name], 
             input_text=question,
+            clean_tokens_in_output=True
         )
-        our_answer_without_context, ue_score_without_context = result_without_context.generation_text, result_without_context.uncertainty
+        our_answer_without_context, our_tokens_without_context, ue_score_without_context = result_without_context.generation_text, result_without_context.generation_tokens, result_without_context.uncertainty
 
         result_with_context = estimate_uncertainty(
             model, 
             name2method[method_name], 
             input_text=transfer_context_prompt(question, context),
+            clean_tokens_in_output=True
         )
-        our_answer_with_context, ue_score_with_context = result_with_context.generation_text, result_with_context.uncertainty
+        our_answer_with_context, our_tokens_with_context, ue_score_with_context = result_with_context.generation_text, result_with_context.generation_tokens, result_with_context.uncertainty
 
         # scalar ue scores
         if method_name not in ('TokenEntropy', 'MaximumTokenProbability'):
-            eval_dataset.loc[index, f'{method_name}_without_context'] = ue_score_without_context
-            eval_dataset.loc[index, f'{method_name}_with_context'] = ue_score_with_context
+            eval_dataset.loc[index, f'{method_name}_without_context'] = round(ue_score_without_context, 4)
+            eval_dataset.loc[index, f'{method_name}_with_context'] = round(ue_score_with_context, 4)
             eval_dataset.loc[index, f'our_answer_without_context'] = our_answer_without_context
-            eval_dataset.loc[index, f'our_answer_with_context_'] = our_answer_with_context
+            eval_dataset.loc[index, f'our_answer_with_context'] = our_answer_with_context
             print(f"{method_name}: {ue_score_without_context} (without context), {ue_score_with_context} (with context)")
 
         # token based ue scores
         else:
-            tokens_without_context = model.tokenizer.encode(our_answer_without_context)
-            all_decoded_tokens_without_context = [model.tokenizer.decode(tokens_without_context[ind]) for ind in range(len(tokens_without_context))]
-            all_decoded_tokens_without_context = all_decoded_tokens_without_context[1:] #remove BOS token
-
-            tokens_with_context = model.tokenizer.encode(our_answer_with_context)
-            all_decoded_tokens_with_context = [model.tokenizer.decode(tokens_with_context[ind]) for ind in range(len(tokens_with_context))]
-            all_decoded_tokens_with_context = all_decoded_tokens_with_context[1:] #remove BOS token
+            all_decoded_tokens_without_context = [model.tokenizer.decode(our_tokens_without_context[ind]) for ind in range(len(our_tokens_without_context))]
+            all_decoded_tokens_with_context = [model.tokenizer.decode(our_tokens_with_context[ind]) for ind in range(len(our_tokens_with_context))]
             
             barplot_uncertainty(
                 method_name, 
-                f'data/ue_graphs/{index}_{method_name}_without_context.jpg', 
+                f'data/ue_graphs_perturbations/{index}_{method_name}_without_context.jpg', 
                 all_decoded_tokens_without_context, 
                 ue_score_without_context
             )
             
             barplot_uncertainty(
                 method_name, 
-                f'data/ue_graphs/{index}_{method_name}_with_context.jpg', 
+                f'data/ue_graphs_perturbations/{index}_{method_name}_with_context.jpg', 
                 all_decoded_tokens_with_context, 
                 ue_score_with_context
             )
 
-eval_dataset.to_csv('data/ue_scores_eval_dataset.csv', index=False)
+eval_dataset.to_csv('data/ue_scores_eval_dataset_perturbations.csv', index=False)

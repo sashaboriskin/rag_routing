@@ -36,6 +36,7 @@ class EntropyCalculator(StatCalculator):
         """
         logprobs = dependencies["greedy_log_probs"]
         entropies = []
+        #breakpoint()
         for s_lp in logprobs:
             entropies.append([])
             for lp in s_lp:

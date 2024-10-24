@@ -23,23 +23,39 @@ model = WhiteboxModel.from_pretrained(
     device_map="auto"
 )
 
+#TokenSAR_method = TokenSAR()
 TokenEntropy_method = TokenEntropy()
+
 question = 'What is considered the start of the modern comics in Japan?'
 
-result_without_context = estimate_uncertainty(
-            model, 
-            TokenEntropy_method, 
-            input_text=question,
-        )
-our_answer_without_context, our_tokens_without_context, ue_score_without_context = result_without_context.generation_text, result_without_context.generation_tokens, result_without_context.uncertainty
-all_decoded_tokens_without_context = [model.tokenizer.decode(our_tokens_without_context[ind]) for ind in range(len(our_tokens_without_context))]
+clean_entropy = estimate_uncertainty(
+    model, 
+    TokenEntropy_method, 
+    input_text=question,
+    clean_tokens_in_output=True
+)
+
+entropy = estimate_uncertainty(
+    model, 
+    TokenEntropy_method, 
+    input_text=question,
+    clean_tokens_in_output=False
+)
+
+print(len(clean_entropy.generation_tokens))
+
+print(len(entropy.generation_tokens))
+
+
+# our_answer_without_context, our_tokens_without_context, ue_score_without_context = result_without_context.generation_text, result_without_context.generation_tokens, result_without_context.uncertainty
+# all_decoded_tokens_without_context = [model.tokenizer.decode(our_tokens_without_context[ind]) for ind in range(len(our_tokens_without_context))]
 # all_decoded_tokens_without_context = all_decoded_tokens_without_context[1:]
 
-print(all_decoded_tokens_without_context)
-print('ffffffff')
-print(our_answer_without_context)
-print(len(all_decoded_tokens_without_context))
-print(len(ue_score_without_context))
+# print(all_decoded_tokens_without_context)
+# print('ffffffff')
+# print(our_answer_without_context)
+# print(len(all_decoded_tokens_without_context))
+# print(ue_score_without_context)
 
 # barplot_uncertainty(
 #     'test', 

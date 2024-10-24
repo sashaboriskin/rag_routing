@@ -4,7 +4,7 @@ import itertools
 from typing import Dict, List
 
 from .stat_calculator import StatCalculator
-from sentence_transformers import CrossEncoder
+from sentence_transformers import CrossEncoder, SentenceTransformer
 from lm_polygraph.utils.model import WhiteboxModel
 
 
@@ -30,6 +30,7 @@ class CrossEncoderSimilarityMatrixCalculator(StatCalculator):
         self.crossencoder = CrossEncoder(
             "cross-encoder/stsb-roberta-large", device=device
         )
+        # TODO: change model to the better cross-encoder
 
     def __call__(
         self,

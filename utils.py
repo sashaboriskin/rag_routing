@@ -3,6 +3,7 @@ import numpy as np
 
 def transfer_context_prompt(question, context):
     return f'Answer the question {question} based on the given context {context}'
+    # In case there is no relevent information in the context, answer than you do not know'
 
 def barplot_uncertainty(method_name, path_to_save, tokens, ue_scores):
     plt.figure(figsize=(12, 6))
