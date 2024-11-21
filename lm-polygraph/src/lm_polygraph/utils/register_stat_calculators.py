@@ -64,43 +64,43 @@ def register_stat_calculators(
         _register(GreedyProbsCalculator(n_alternatives=n_ccp_alternatives))
         _register(EntropyCalculator())
         _register(GreedyLMProbsCalculator())
-        _register(SamplingGenerationCalculator())
-        _register(BartScoreCalculator())
-        _register(ModelScoreCalculator())
-        _register(EmbeddingsCalculator())
-        _register(EnsembleTokenLevelDataCalculator())
-        _register(CrossEncoderSimilarityMatrixCalculator(nli_model=nli_model))
-        _register(GreedyAlternativesNLICalculator(nli_model=nli_model))
-        _register(GreedyAlternativesFactPrefNLICalculator(nli_model=nli_model))
-        _register(ClaimsExtractor(openai_chat=openai_chat, language=language))
-        _register(
-            PromptCalculator(
-                "Question: {q}\n Possible answer:{a}\n "
-                "Is the possible answer:\n (A) True\n (B) False\n The possible answer is:",
-                "True",
-                "p_true",
-                sample_text_dependency=None,  # Not calculate T text samples for P(True)
-            )
-        )
-        _register(
-            PromptCalculator(
-                "Question: {q}\n Here are some ideas that were brainstormed: {s}\n Possible answer:{a}\n "
-                "Is the possible answer:\n (A) True\n (B) False\n The possible answer is:",
-                "True",
-                "p_true_sampling",
-            )
-        )
-        _register(
-            PromptCalculator(
-                "Question: {q}\n Possible answer:{a}\n "
-                "Is the possible answer True or False? The possible answer is: ",
-                "True",
-                "p_true_claim",
-                input_text_dependency="claim_input_texts_concatenated",
-                sample_text_dependency=None,
-                generation_text_dependency="claim_texts_concatenated",
-            )
-        )
+        # _register(SamplingGenerationCalculator())
+        # _register(BartScoreCalculator())
+        # _register(ModelScoreCalculator())
+        # _register(EmbeddingsCalculator())
+        # _register(EnsembleTokenLevelDataCalculator())
+        # _register(CrossEncoderSimilarityMatrixCalculator(nli_model=nli_model))
+        # _register(GreedyAlternativesNLICalculator(nli_model=nli_model))
+        # _register(GreedyAlternativesFactPrefNLICalculator(nli_model=nli_model))
+        # _register(ClaimsExtractor(openai_chat=openai_chat, language=language))
+#         _register(
+#             PromptCalculator(
+#                 "Question: {q}\n Possible answer:{a}\n "
+#                 "Is the possible answer:\n (A) True\n (B) False\n The possible answer is:",
+#                 "True",
+#                 "p_true",
+#                 sample_text_dependency=None,  # Not calculate T text samples for P(True)
+#             )
+#         )
+#         _register(
+#             PromptCalculator(
+#                 "Question: {q}\n Here are some ideas that were brainstormed: {s}\n Possible answer:{a}\n "
+#                 "Is the possible answer:\n (A) True\n (B) False\n The possible answer is:",
+#                 "True",
+#                 "p_true_sampling",
+#             )
+#         )
+#         _register(
+#             PromptCalculator(
+#                 "Question: {q}\n Possible answer:{a}\n "
+#                 "Is the possible answer True or False? The possible answer is: ",
+#                 "True",
+#                 "p_true_claim",
+#                 input_text_dependency="claim_input_texts_concatenated",
+#                 sample_text_dependency=None,
+#                 generation_text_dependency="claim_texts_concatenated",
+#             )
+#         )
 
     log.info("Done intitializing stat calculators...")
 
