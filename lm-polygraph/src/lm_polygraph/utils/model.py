@@ -23,6 +23,7 @@ from transformers import (
 from lm_polygraph.utils.generation_parameters import GenerationParameters
 from lm_polygraph.utils.ensemble_utils.ensemble_generator import EnsembleGenerationMixin
 from lm_polygraph.utils.ensemble_utils.dropout import replace_dropout
+from prompts import assistant_system_prompt
 
 log = logging.getLogger("lm_polygraph")
 
@@ -548,13 +549,14 @@ class WhiteboxModel(Model):
         Returns:
             dict[str, torch.Tensor]: tensors dictionary obtained by tokenizing input texts batch.
         """
+        
         # Apply chat template if tokenizer has it
         if self.tokenizer.chat_template is not None:
             formatted_texts = []
             for chat in texts:
                 if isinstance(chat, str):
                     chat = [{"role": "user", "content": chat}, 
-                            {"role": "assistant", "content": "You are a helpful assistant who gives only factually correct short answers without additional information"}]
+                            {"role": "assistant", "content": assistant_system_prompt()}]
                 formatted_chat = self.tokenizer.apply_chat_template(
                     chat, add_generation_prompt=True, tokenize=False
                 )
