@@ -14,7 +14,6 @@ from omegaconf import OmegaConf
 import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
-
 from prompts import (
     w_context_user_prompt,
     w_context_system_prompt,
@@ -31,9 +30,9 @@ class AbstractDataset(ABC):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.data_path = data_path
         self.file_path = file_path
-        self.data = self._load_or_process_data()
+        self.data = self.load_or_process_data()
 
-    def _load_or_process_data(self):
+    def load_or_process_data(self):
         if os.path.exists(self.file_path):
             return pd.read_csv(self.file_path)
         
@@ -45,11 +44,11 @@ class AbstractDataset(ABC):
         data = self.preprocess()
         data = self.generate_answers(data)
         data = self.gpt_correctness(data)
-        #data.to_csv(self.file_path, index=False)
+        data.to_csv(self.file_path, index=False)
         return data
     
     def preprocess(self):
-        self.data = load_dataset(self.data_path)['train'].to_pandas().sample(frac=0.05)
+        self.data = load_dataset(self.data_path)['train'].to_pandas()
         self.data = self.data[['question_text', 'reference', 'gold_context']]
         self.data = self.data.rename(columns={
             'question_text': 'question', 
@@ -61,7 +60,6 @@ class AbstractDataset(ABC):
         # remove Title: ..., Content: 
         self.data['context'] = self.data['context'].apply(lambda x: self.extract_content(x[0]))
         return self.data
-        
 
     def gpt_correctness(self, df):
         for index, row in tqdm(df.iterrows()):
@@ -100,42 +98,49 @@ class AbstractDataset(ABC):
         return match.group(1) if match else text
     
     def generate_answers(self, df):
-        max_new_tokens = df['golden_answer'].apply(len).mean()
-
-        for index, row in tqdm(df.iterrows()):
-            our_answer_wo_context = [
-                {"role": "user", "content": row['question']}, 
-                {"role": "system", "content": wo_context_system_prompt()}
-            ]
-
-            our_answer_wo_context = self.tokenizer.apply_chat_template(our_answer_wo_context, add_generation_prompt=True, tokenize=False)
-            our_answer_wo_context = self.tokenizer(our_answer_wo_context, return_tensors="pt", add_special_tokens=False).to(self.device)
-            our_answer_wo_context = self.tokenizer.batch_decode(self.model.generate(
-                **our_answer_wo_context, 
-                max_new_tokens=max_new_tokens,
-                generation_config=self.sampling_params,
-            ))[0]
-            match = re.search(r'<\|start_header_id\|>assistant<\|end_header_id\|>\n\n(.*?)<\|eot_id\|>', our_answer_wo_context, re.DOTALL)
-            our_answer_wo_context = match.group(1) if match else our_answer_wo_context
+        try:
+            max_new_tokens = df['golden_answer'].apply(len).mean()
+        except:
+            # if golden_answer is not provided
+            max_new_tokens = 100
             
-            our_asnwer_w_context = [
-                {"role": "user", "content": w_context_user_prompt(row['question'], row['context'])}, 
-                {"role": "system", "content": w_context_system_prompt()}
+        def generate_answer(question, system_prompt):
+            messages = [
+                {"role": "user", "content": question},
+                {"role": "system", "content": system_prompt}
             ]
-            our_asnwer_w_context = self.tokenizer.apply_chat_template(our_asnwer_w_context, add_generation_prompt=True, tokenize=False)
-            our_asnwer_w_context = self.tokenizer(our_asnwer_w_context, return_tensors="pt", add_special_tokens=False).to(self.device)
-            our_asnwer_w_context = self.tokenizer.batch_decode(self.model.generate(
-                **our_asnwer_w_context, 
+            input_data = self.tokenizer.apply_chat_template(
+                messages, add_generation_prompt=True, tokenize=False
+            )
+            input_data = self.tokenizer(
+                input_data, return_tensors="pt", add_special_tokens=False
+            ).to(self.device)
+
+            input_len = input_data["input_ids"].shape[1]
+            
+            generated = self.model.generate(
+                input_ids=input_data["input_ids"],
+                attention_mask=input_data["attention_mask"],
                 max_new_tokens=max_new_tokens,
                 generation_config=self.sampling_params,
-            ))[0]
-            match = re.search(r'<\|start_header_id\|>assistant<\|end_header_id\|>\n\n(.*?)<\|eot_id\|>', our_asnwer_w_context, re.DOTALL)
-            our_asnwer_w_context = match.group(1) if match else our_asnwer_w_context
+            )
+            answer = self.tokenizer.batch_decode(
+                generated[:, input_len:], skip_special_tokens=True
+            )[0]
+            return answer
+        
+        for index, row in tqdm(df.iterrows(), total=len(df)):
+            df.loc[index, 'our_answer_wo_context'] = generate_answer(
+                question=row['question'],
+                system_prompt=wo_context_system_prompt()
+            )
 
-            df.loc[index, 'our_answer_wo_context'] = our_answer_wo_context
-            df.loc[index, 'our_answer_w_context'] = our_asnwer_w_context
-
+            df.loc[index, 'our_answer_w_context'] = generate_answer(
+                question=w_context_user_prompt(row['question'], row['context']),
+                system_prompt=w_context_system_prompt()
+            )
         return df
+
 
 class OurNQDataset(AbstractDataset):
     def __init__(self):
@@ -157,14 +162,22 @@ class Squad2Dataset(AbstractDataset):
     def __init__(self):
         super().__init__(
             data_path='data/squad2/impossible_questions_with_unique_contexts.csv',
-            file_path='data/squad2/impossible_questions_with_unique_contexts.csv',
-            data=None
+            file_path='data/squad2.csv',
         )
-        if os.path.exists(self.data_path):
-            self.data = pd.read_csv(self.file_path)
-        else:
-            self.data = self.preprocess()
-            self.data = self.generate_answers(self.data)
+    
+    def load_or_process_data(self):
+        if os.path.exists(self.file_path):
+            return pd.read_csv(self.file_path)
+            
+        self.sampling_params = GenerationConfig(**self.cfg.generation_config)
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_id)
+        self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
+    
+        data = self.preprocess()
+        data = self.generate_answers(data)
+        data.to_csv(self.file_path, index=False)
+        return data
     
     def preprocess(self):
         if not os.path.exists('data/squad2/train-v2.0.json'):
@@ -196,6 +209,7 @@ class Squad2Dataset(AbstractDataset):
                 writer.writerow(item)
         
         self.data = pd.read_csv(self.data_path)
+        self.data = self.data.sample(500, random_state=self.cfg.seed)
         return self.data
 
 
@@ -213,6 +227,26 @@ class TriviaQADataset(AbstractDataset):
             data_path='VityaVitalich/adaptive_rag_trivia_qa',
             file_path='data/adaptive_rag_trivia_qa.csv'
         )
+    
+    def preprocess(self):
+        self.data = load_dataset(self.data_path)['train'].to_pandas()
+        self.data = self.data[['question_text', 'reference', 'contexts']]
+        self.data = self.data.rename(columns={
+            'question_text': 'question', 
+            'reference': 'golden_answer', 
+            'contexts': 'context'
+        })
+        # union if multiple golden answers are given
+        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
+        
+        def select_context(contexts):
+            for context in contexts:
+                if context.get('is_supporting', False):
+                    return context['paragraph_text']
+            return contexts[-1]['paragraph_text']
+
+        self.data['context'] = self.data['context'].apply(select_context)
+        return self.data
 
 
 class SquadDataset(AbstractDataset):
@@ -229,6 +263,25 @@ class WikiMultiHopQADataset(AbstractDataset):
             data_path='VityaVitalich/adaptive_rag_2wikimultihopqa',
             file_path='data/adaptive_rag_2wikimultihopqa.csv'
         )
+    def preprocess(self):
+        self.data = load_dataset(self.data_path)['train'].to_pandas()
+        self.data = self.data[['question_text', 'reference', 'contexts']]
+        self.data = self.data.rename(columns={
+            'question_text': 'question', 
+            'reference': 'golden_answer', 
+            'contexts': 'context'
+        })
+        # union if multiple golden answers are given
+        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
+        
+        def select_context(contexts):
+            for context in contexts:
+                if context.get('is_supporting', False):
+                    return context['paragraph_text']
+            return contexts[-1]['paragraph_text']
+
+        self.data['context'] = self.data['context'].apply(select_context)
+        return self.data
 
 
 class HotPotQADataset(AbstractDataset):
@@ -237,7 +290,25 @@ class HotPotQADataset(AbstractDataset):
             data_path='VityaVitalich/adaptive_rag_hotpotqa',
             file_path='data/adaptive_rag_hotpotqa.csv'
         )
+    def preprocess(self):
+        self.data = load_dataset(self.data_path)['train'].to_pandas()
+        self.data = self.data[['question_text', 'reference', 'contexts']]
+        self.data = self.data.rename(columns={
+            'question_text': 'question', 
+            'reference': 'golden_answer', 
+            'contexts': 'context'
+        })
+        # union if multiple golden answers are given
+        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
+        
+        def select_context(contexts):
+            for context in contexts:
+                if context.get('is_supporting', False):
+                    return context['paragraph_text']
+            return contexts[-1]['paragraph_text']
 
+        self.data['context'] = self.data['context'].apply(select_context)
+        return self.data
 
 class MusiqueDataset(AbstractDataset):
     def __init__(self):
@@ -245,8 +316,22 @@ class MusiqueDataset(AbstractDataset):
             data_path='VityaVitalich/adaptive_rag_musique',
             file_path='data/adaptive_rag_musique.csv'
         )
+    def preprocess(self):
+        self.data = load_dataset(self.data_path)['train'].to_pandas()
+        self.data = self.data[['question_text', 'reference', 'contexts']]
+        self.data = self.data.rename(columns={
+            'question_text': 'question', 
+            'reference': 'golden_answer', 
+            'contexts': 'context'
+        })
+        # union if multiple golden answers are given
+        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
+        
+        def select_context(contexts):
+            for context in contexts:
+                if context.get('is_supporting', False):
+                    return context['paragraph_text']
+            return contexts[-1]['paragraph_text']
 
-
-if __name__ == '__main__':
-    df = NQDataset().data
-    print(df)
+        self.data['context'] = self.data['context'].apply(select_context)
+        return self.data

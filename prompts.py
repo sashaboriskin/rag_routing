@@ -2,10 +2,10 @@ def w_context_user_prompt(question, context):
     return f'Context: "{context}" Question: "{question}"'
 
 def w_context_system_prompt():
-    return 'You are a helpful assistant who gives only factually correct short answers. Answer the question based on the given context. If there is no relevant information in the context, respond with "I do not know". The question and context are given below.'
+    return 'You are a helpful assistant. Provide extremely short and factually correct answers based only on the given context. If the context does not contain relevant information, respond with "I do not know". Limit your answer to just a few words. Avoid explanations or additional details.'
 
 def wo_context_system_prompt():
-    return 'You are a helpful assistant who gives only factually correct short answers.'
+    return 'You are a helpful assistant. Your task is to provide extremely short and factual answers. Respond with just the key fact, name, date, or relevant information in no more than a few words. Avoid any explanations, context, or additional details.'
 
 def correctness_system_prompt():
     return """You will be given a user query, a reference answer, and a model's response. Your task is to evaluate the model’s response only in relation to the reference answer. Focus on the accuracy and completeness of the information in the model’s response compared to the reference. Ignore stylistic differences or minor rephrasings
