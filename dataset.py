@@ -27,7 +27,7 @@ load_dotenv()
 class AbstractDataset(ABC):
     def __init__(self, data_path, file_path):
         self.cfg = OmegaConf.load("config.yaml")
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.data_path = data_path
         self.file_path = file_path
         self.data = self.load_or_process_data()
@@ -99,7 +99,7 @@ class AbstractDataset(ABC):
     
     def generate_answers(self, df):
         try:
-            max_new_tokens = df['golden_answer'].apply(len).mean()
+            max_new_tokens = int(df['golden_answer'].apply(len).mean())
         except:
             # if golden_answer is not provided
             max_new_tokens = 100
@@ -142,75 +142,20 @@ class AbstractDataset(ABC):
         return df
 
 
-class OurNQDataset(AbstractDataset):
-    def __init__(self):
-        super().__init__(
-            data_path='cjlovering/natural-questions-short',
-            file_path='data/natural-questions-short.csv'
-        )
+# class OurNQDataset(AbstractDataset):
+#     def __init__(self):
+#         super().__init__(
+#             data_path='cjlovering/natural-questions-short',
+#             file_path='data/natural-questions-short.csv'
+#         )
 
-    def preprocess(self):
-        self.data = load_dataset(self.data_path)['train'].shuffle(seed=self.cfg.seed).select(range(1000)).to_pandas()
-        self.data = self.data[['contexts', 'questions', 'answers']]
-        self.data['questions'] = self.data['questions'].apply(lambda x: x[0]['input_text'])
-        self.data['answers'] = self.data['answers'].apply(lambda x: x[0]['span_text'])
-        self.data = self.data.rename(columns={'questions': 'question', 'answers': 'golden_answer', 'contexts': 'context'})
-        return self.data
-
-
-class Squad2Dataset(AbstractDataset):
-    def __init__(self):
-        super().__init__(
-            data_path='data/squad2/impossible_questions_with_unique_contexts.csv',
-            file_path='data/squad2.csv',
-        )
-    
-    def load_or_process_data(self):
-        if os.path.exists(self.file_path):
-            return pd.read_csv(self.file_path)
-            
-        self.sampling_params = GenerationConfig(**self.cfg.generation_config)
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_id)
-        self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
-    
-        data = self.preprocess()
-        data = self.generate_answers(data)
-        data.to_csv(self.file_path, index=False)
-        return data
-    
-    def preprocess(self):
-        if not os.path.exists('data/squad2/train-v2.0.json'):
-            raise FileNotFoundError(f"Squad2 json is not found")
-        
-        with open('data/squad2/train-v2.0.json', 'r') as file:
-            data = json.load(file)
-
-        impossible_questions_with_unique_contexts = []
-        unique_contexts = set()
-
-        for item in data['data']:
-            for paragraph in item['paragraphs']:
-                context = paragraph['context']
-                if context not in unique_contexts: 
-                    for qas in paragraph['qas']:
-                        if qas.get('is_impossible', False):
-                            impossible_questions_with_unique_contexts.append({
-                                "question": qas['question'],
-                                "context": context
-                            })
-                            unique_contexts.add(context)
-                            break
-
-        with open(self.data_path, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['question', 'context'])
-            writer.writeheader()
-            for item in impossible_questions_with_unique_contexts:
-                writer.writerow(item)
-        
-        self.data = pd.read_csv(self.data_path)
-        self.data = self.data.sample(500, random_state=self.cfg.seed)
-        return self.data
+#     def preprocess(self):
+#         self.data = load_dataset(self.data_path)['train'].shuffle(seed=self.cfg.seed).select(range(1000)).to_pandas()
+#         self.data = self.data[['contexts', 'questions', 'answers']]
+#         self.data['questions'] = self.data['questions'].apply(lambda x: x[0]['input_text'])
+#         self.data['answers'] = self.data['answers'].apply(lambda x: x[0]['span_text'])
+#         self.data = self.data.rename(columns={'questions': 'question', 'answers': 'golden_answer', 'contexts': 'context'})
+#         return self.data
 
 
 class NQDataset(AbstractDataset):
