@@ -119,8 +119,7 @@ class AbstractDataset(ABC):
             input_len = input_data["input_ids"].shape[1]
             
             generated = self.model.generate(
-                input_ids=input_data["input_ids"],
-                attention_mask=input_data["attention_mask"],
+                **input_data,
                 max_new_tokens=max_new_tokens,
                 generation_config=self.sampling_params,
             )

@@ -1,18 +1,51 @@
 import json
+import os
+import csv
 
-file_path = 'data/wikimultihopqa/dev_500_subsampled.jsonl'
+def extract_supportive_contexts(dataset_name, base_path):
+    for subset in ['dev_500', 'test']:
+        file_path = os.path.join(base_path, dataset_name, f'{subset}_subsampled.jsonl')
 
-all_have_supporting = True
+        data_list = []
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                data = json.loads(line)
+                data.pop('reasoning_steps', None)
 
-with open(file_path, 'r', encoding='utf-8') as f:
-    for line in f:
-        data = json.loads(line)
-        has_supporting = any(context.get('is_supporting', False) for context in data.get('contexts', []))
-        if not has_supporting:
-            print(f"Строка с question_id={data['question_id']} не имеет is_supporting=True")
-            all_have_supporting = False
+                # union if multiple reference answers are given
+                reference = ';'.join(
+                    span for obj in data.get('answers_objects', []) for span in obj.get('spans', [])
+                )
+                # remove answers where is_supporting is False
+                supportive_contexts = [
+                    context for context in data.get('contexts', []) if context.get('is_supporting', False)
+                ]
 
-if all_have_supporting:
-    print("Во всех строках есть хотя бы один paragraph_text с is_supporting=True.")
-else:
-    print("Не во всех строках есть paragraph_text с is_supporting=True.")
+                if supportive_contexts:
+                    # union if multiple supportive contexts are given
+                    supportive_context = '\n'.join(context.get('paragraph_text', '') for context in supportive_contexts)
+
+                    data_list.append({
+                        'question_id': data.get('question_id'),
+                        'question': data.get('question_text'),
+                        'reference': reference,
+                        'context': supportive_context,
+                    })
+
+        fieldnames = ['question_id', 'question', 'reference', 'context']
+        with open(f'data/adaptive_rag_{dataset_name}_{subset}.csv', 'w', encoding='utf-8', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(data_list)
+
+
+def main():
+    base_path = 'data/adaptive_rag_raw/processed_data'
+    datasets = ['2wikimultihopqa', 'hotpotqa', 'musique', 'nq']
+
+    for dataset_name in datasets:
+        extract_supportive_contexts(dataset_name, base_path)
+
+
+if __name__ == "__main__":
+    main()
