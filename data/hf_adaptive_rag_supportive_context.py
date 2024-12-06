@@ -1,3 +1,9 @@
+"""
+This script extracts supportive contexts from the Adaptive RAG datasets and save them in a CSV file.
+You can find preprocessed datasets here:
+https://huggingface.co/collections/aboriskin/adaptive-rag-supporting-context-674f1251dcbba84f93b4e9d1
+"""
+
 import json
 import os
 import csv
@@ -33,14 +39,14 @@ def extract_supportive_contexts(dataset_name, base_path):
                     })
 
         fieldnames = ['question_id', 'question', 'reference', 'context']
-        with open(f'data/adaptive_rag_{dataset_name}_{subset}.csv', 'w', encoding='utf-8', newline='') as csvfile:
+        with open(f'adaptive_rag_{dataset_name}_{subset}.csv', 'w', encoding='utf-8', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data_list)
 
 
 def main():
-    base_path = 'data/adaptive_rag_raw/processed_data'
+    base_path = 'adaptive_rag_raw/processed_data'
     datasets = ['2wikimultihopqa', 'hotpotqa', 'musique', 'nq']
 
     for dataset_name in datasets:
