@@ -1,11 +1,7 @@
 from abc import ABC, abstractmethod
-import csv
-import re
 import os
-import json
 
 from datasets import load_dataset
-import logging
 import torch
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -25,10 +21,10 @@ from prompts import (
 load_dotenv()
 
 class AbstractDataset(ABC):
-    def __init__(self, data_path, file_path):
+    def __init__(self, hf_path, file_path):
         self.cfg = OmegaConf.load("config.yaml")
-        # self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.data_path = data_path
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.hf_path = hf_path
         self.file_path = file_path
         self.data = self.load_or_process_data()
 
@@ -41,25 +37,12 @@ class AbstractDataset(ABC):
         self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_id)
         self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
         
-        data = self.preprocess()
+        data = load_dataset(self.hf_path, split='validation').to_pandas()
         data = self.generate_answers(data)
         data = self.gpt_correctness(data)
         data.to_csv(self.file_path, index=False)
         return data
     
-    def preprocess(self):
-        self.data = load_dataset(self.data_path)['train'].to_pandas()
-        self.data = self.data[['question_text', 'reference', 'gold_context']]
-        self.data = self.data.rename(columns={
-            'question_text': 'question', 
-            'reference': 'golden_answer', 
-            'gold_context': 'context'
-        })
-        # union if multiple golden answers are given
-        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
-        # remove Title: ..., Content: 
-        self.data['context'] = self.data['context'].apply(lambda x: self.extract_content(x[0]))
-        return self.data
 
     def gpt_correctness(self, df):
         for index, row in tqdm(df.iterrows()):
@@ -93,15 +76,11 @@ class AbstractDataset(ABC):
 
         return df
     
-    def extract_content(self, text):
-        match = re.search(r'Content:\s*(.*)', text)
-        return match.group(1) if match else text
-    
     def generate_answers(self, df):
         try:
-            max_new_tokens = int(df['golden_answer'].apply(len).mean())
+            max_new_tokens = int(df['reference'].apply(len).mean())
         except:
-            # if golden_answer is not provided
+            # if reference is not provided
             max_new_tokens = 100
             
         def generate_answer(question, system_prompt):
@@ -141,141 +120,33 @@ class AbstractDataset(ABC):
         return df
 
 
-# class OurNQDataset(AbstractDataset):
-#     def __init__(self):
-#         super().__init__(
-#             data_path='cjlovering/natural-questions-short',
-#             file_path='data/natural-questions-short.csv'
-#         )
-
-#     def preprocess(self):
-#         self.data = load_dataset(self.data_path)['train'].shuffle(seed=self.cfg.seed).select(range(1000)).to_pandas()
-#         self.data = self.data[['contexts', 'questions', 'answers']]
-#         self.data['questions'] = self.data['questions'].apply(lambda x: x[0]['input_text'])
-#         self.data['answers'] = self.data['answers'].apply(lambda x: x[0]['span_text'])
-#         self.data = self.data.rename(columns={'questions': 'question', 'answers': 'golden_answer', 'contexts': 'context'})
-#         return self.data
-
-
 class NQDataset(AbstractDataset):
     def __init__(self):
         super().__init__(
-            data_path='VityaVitalich/adaptive_rag_natural_questions',
+            hf_path='aboriskin/adaptive_rag_nq',
             file_path='data/adaptive_rag_natural_questions.csv'
-        )
-
-
-class TriviaQADataset(AbstractDataset):
-    def __init__(self):
-        super().__init__(
-            data_path='VityaVitalich/adaptive_rag_trivia_qa',
-            file_path='data/adaptive_rag_trivia_qa.csv'
-        )
-    
-    def preprocess(self):
-        self.data = load_dataset(self.data_path)['train'].to_pandas()
-        self.data = self.data[['question_text', 'reference', 'contexts']]
-        self.data = self.data.rename(columns={
-            'question_text': 'question', 
-            'reference': 'golden_answer', 
-            'contexts': 'context'
-        })
-        # union if multiple golden answers are given
-        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
-        
-        def select_context(contexts):
-            for context in contexts:
-                if context.get('is_supporting', False):
-                    return context['paragraph_text']
-            return contexts[-1]['paragraph_text']
-
-        self.data['context'] = self.data['context'].apply(select_context)
-        return self.data
-
-
-class SquadDataset(AbstractDataset):
-    def __init__(self):
-        super().__init__(
-            data_path='VityaVitalich/adaptive_rag_squad',
-            file_path='data/adaptive_rag_squad.csv'
         )
 
 
 class WikiMultiHopQADataset(AbstractDataset):
     def __init__(self):
         super().__init__(
-            data_path='VityaVitalich/adaptive_rag_2wikimultihopqa',
+            hf_path='aboriskin/adaptive_rag_2wikimultihopqa',
             file_path='data/adaptive_rag_2wikimultihopqa.csv'
         )
-    def preprocess(self):
-        self.data = load_dataset(self.data_path)['train'].to_pandas()
-        self.data = self.data[['question_text', 'reference', 'contexts']]
-        self.data = self.data.rename(columns={
-            'question_text': 'question', 
-            'reference': 'golden_answer', 
-            'contexts': 'context'
-        })
-        # union if multiple golden answers are given
-        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
-        
-        def select_context(contexts):
-            for context in contexts:
-                if context.get('is_supporting', False):
-                    return context['paragraph_text']
-            return contexts[-1]['paragraph_text']
-
-        self.data['context'] = self.data['context'].apply(select_context)
-        return self.data
 
 
 class HotPotQADataset(AbstractDataset):
     def __init__(self):
         super().__init__(
-            data_path='VityaVitalich/adaptive_rag_hotpotqa',
+            hf_path='aboriskin/adaptive_rag_hotpotqa',
             file_path='data/adaptive_rag_hotpotqa.csv'
         )
-    def preprocess(self):
-        self.data = load_dataset(self.data_path)['train'].to_pandas()
-        self.data = self.data[['question_text', 'reference', 'contexts']]
-        self.data = self.data.rename(columns={
-            'question_text': 'question', 
-            'reference': 'golden_answer', 
-            'contexts': 'context'
-        })
-        # union if multiple golden answers are given
-        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
-        
-        def select_context(contexts):
-            for context in contexts:
-                if context.get('is_supporting', False):
-                    return context['paragraph_text']
-            return contexts[-1]['paragraph_text']
 
-        self.data['context'] = self.data['context'].apply(select_context)
-        return self.data
 
 class MusiqueDataset(AbstractDataset):
     def __init__(self):
         super().__init__(
-            data_path='VityaVitalich/adaptive_rag_musique',
+            hf_path='aboriskin/adaptive_rag_musique',
             file_path='data/adaptive_rag_musique.csv'
         )
-    def preprocess(self):
-        self.data = load_dataset(self.data_path)['train'].to_pandas()
-        self.data = self.data[['question_text', 'reference', 'contexts']]
-        self.data = self.data.rename(columns={
-            'question_text': 'question', 
-            'reference': 'golden_answer', 
-            'contexts': 'context'
-        })
-        # union if multiple golden answers are given
-        self.data['golden_answer'] = self.data['golden_answer'].apply(lambda x: '; '.join(x))
-        
-        def select_context(contexts):
-            for context in contexts:
-                if context.get('is_supporting', False):
-                    return context['paragraph_text']
-            return contexts[-1]['paragraph_text']
-
-        self.data['context'] = self.data['context'].apply(select_context)
-        return self.data
