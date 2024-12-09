@@ -8,23 +8,24 @@ def wo_context_system_prompt():
     return 'You are a helpful assistant. Your task is to provide extremely short and factual answers. Respond with just the key fact, name, date, or relevant information in no more than a few words. Avoid any explanations, context, or additional details.'
 
 def correctness_system_prompt():
-    return """You will be given a user query, a reference answer, and a model's response. Your task is to evaluate the model’s response only in relation to the reference answer. Focus on the accuracy and completeness of the information in the model’s response compared to the reference. Ignore stylistic differences or minor rephrasings
+    return """You will be given a user query, a reference answer, and a model's response. Your task is to evaluate the model’s response only in relation to the reference answer. Focus solely on the accuracy and completeness of the information in the model’s response compared to the reference. Ignore stylistic differences, minor rephrasings, or formatting.
 
 Evaluation criteria:
 
-Score 0 if the model's answer is entirely incorrect or no answer is provided or lacks information or or includes extraneous details not relevant to the query. 
-Score 1 if the model’s answer is entirely correct and sufficiently answers the query without unnecessary information.
-Provide your answer in the format: Score.
+- Score 0: If the model's answer is entirely incorrect, incomplete, lacks information, or includes extraneous details not relevant to the query.
+- Score 1: If the model's answer is entirely correct and sufficiently answers the query without unnecessary information.
 
-Your evaluation will be used to measure consistency and accuracy."""
+Provide your answer strictly as a single digit: either 0 or 1. Do not include any additional text, explanation, or formatting."""
+
 
 def correctness_user_prompt(question, golden_answer, model_answer):
-    return"""Please evaluate the model's response based on its accuracy compared to the reference answer, using one of the following scores:
+    return f"""Evaluate the model's response using the following criteria:
 
-0: Incorrect, no response, lacks information
-1: Completely correct
-Format: Score.
+0: Incorrect, incomplete, lacks information, or includes irrelevant details.
+1: Correct, complete, and sufficiently answers the query without unnecessary details.
 
-Question: {question} 
-Reference answers: {golden_answer} 
+Respond strictly with a single digit: 0 or 1.
+
+Question: {question}
+Reference answers: {golden_answer}
 Model Answer: {model_answer}"""
