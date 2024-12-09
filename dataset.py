@@ -52,7 +52,7 @@ class AbstractDataset(ABC):
                 messages=[
                     {"role": "user", "content": correctness_user_prompt(
                         question=row['question'], 
-                        golden_answer=row['golden_answer'], 
+                        golden_answer=row['reference'], 
                         model_answer=row['our_answer_wo_context']
                     )},
                     {"role": "system", "content": correctness_system_prompt()}
@@ -64,7 +64,7 @@ class AbstractDataset(ABC):
                 messages=[
                     {"role": "user", "content": correctness_user_prompt(
                         question=row['question'], 
-                        golden_answer=row['golden_answer'], 
+                        golden_answer=row['reference'], 
                         model_answer=row['our_answer_w_context']
                     )},
                     {"role": "system", "content": correctness_system_prompt()}
