@@ -127,7 +127,11 @@ class UncertaintyOutput:
 
 
 def estimate_uncertainty(
-    model: Model, estimator: Estimator, input_text: str, w_context: bool = False, clean_tokens_in_output: bool = False
+    model: Model, 
+    estimator: Estimator, 
+    input_text: str, 
+    context: str = None,
+    clean_tokens_in_output: bool = False
 ) -> UncertaintyOutput:
     """
     Estimated uncertainty of the model generation using the provided esitmator.
@@ -138,6 +142,9 @@ def estimate_uncertainty(
         estimator (Estimator): uncertainty estimation method to use. Can be any of the methods at
             lm_polygraph.estimators.
         input_text (str): text to estimate uncertainty of.
+        w_context (bool): Whether to use context-aware prompting
+        context (str): Context string (required if w_context=True)
+        clean_tokens_in_output (bool): Whether to clean tokens in output
     Returns:
         UncertaintyOutput: uncertainty estimation float along with supporting info.
 
@@ -176,8 +183,8 @@ def estimate_uncertainty(
         [],
         ignore_exceptions=False,
         verbose=False,
-        w_context=w_context,
         clean_tokens_in_output=clean_tokens_in_output,
+        context=context,
     )
     man()
     ue = man.estimations[estimator.level, str(estimator)]
@@ -283,7 +290,8 @@ class UEManager:
         background_train_dataset_max_new_tokens: int = 100,
         cache_path=os.path.expanduser("~") + "/.cache",
         clean_tokens_in_output: bool = False,
-        w_context: bool = False,
+        context: Optional[str] = None,
+
     ):
         """
         Parameters:
@@ -325,8 +333,8 @@ class UEManager:
         self.estimators: List[Estimator] = estimators
         self.generation_metrics: List[GenerationMetric] = generation_metrics
         self.ue_metrics: List[UEMetric] = ue_metrics
-        self.w_context = w_context
         self.clean_tokens_in_output = clean_tokens_in_output
+        self.context = context
 
         _check_unique_names(generation_metrics)
         _check_unique_names(estimators)
@@ -597,8 +605,13 @@ class UEManager:
         """
         for stat_calculator in calculators:
             try:
-                new_stats = stat_calculator(
-                    batch_stats, inp_texts, self.model, self.max_new_tokens
+                if isinstance(stat_calculator, GreedyProbsCalculator):
+                    new_stats = stat_calculator(
+                        batch_stats, inp_texts, self.model, self.max_new_tokens, self.context
+                    )
+                else:
+                    new_stats = stat_calculator(
+                        batch_stats, inp_texts, self.model, self.max_new_tokens
                 )
                 if isinstance(stat_calculator, GreedyProbsCalculator) and any(isinstance(c, EntropyCalculator) for c in calculators) and self.clean_tokens_in_output:
                     # remove punctuation and other not important tokens in entropy calculation
