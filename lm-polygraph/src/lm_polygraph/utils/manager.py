@@ -127,7 +127,7 @@ class UncertaintyOutput:
 
 
 def estimate_uncertainty(
-    model: Model, estimator: Estimator, input_text: str, clean_tokens_in_output: bool = False
+    model: Model, estimator: Estimator, input_text: str, w_context: bool = False, clean_tokens_in_output: bool = False
 ) -> UncertaintyOutput:
     """
     Estimated uncertainty of the model generation using the provided esitmator.
@@ -176,6 +176,7 @@ def estimate_uncertainty(
         [],
         ignore_exceptions=False,
         verbose=False,
+        w_context=w_context,
         clean_tokens_in_output=clean_tokens_in_output,
     )
     man()
@@ -282,6 +283,7 @@ class UEManager:
         background_train_dataset_max_new_tokens: int = 100,
         cache_path=os.path.expanduser("~") + "/.cache",
         clean_tokens_in_output: bool = False,
+        w_context: bool = False,
     ):
         """
         Parameters:
@@ -323,6 +325,7 @@ class UEManager:
         self.estimators: List[Estimator] = estimators
         self.generation_metrics: List[GenerationMetric] = generation_metrics
         self.ue_metrics: List[UEMetric] = ue_metrics
+        self.w_context = w_context
         self.clean_tokens_in_output = clean_tokens_in_output
 
         _check_unique_names(generation_metrics)

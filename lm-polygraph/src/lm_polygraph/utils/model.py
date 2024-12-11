@@ -23,7 +23,7 @@ from transformers import (
 from lm_polygraph.utils.generation_parameters import GenerationParameters
 from lm_polygraph.utils.ensemble_utils.ensemble_generator import EnsembleGenerationMixin
 from lm_polygraph.utils.ensemble_utils.dropout import replace_dropout
-from prompts import assistant_system_prompt
+from prompts import w_context_user_prompt, w_context_system_prompt, wo_context_system_prompt
 
 log = logging.getLogger("lm_polygraph")
 
