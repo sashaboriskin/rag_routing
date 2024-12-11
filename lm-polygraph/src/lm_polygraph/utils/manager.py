@@ -605,9 +605,9 @@ class UEManager:
         """
         for stat_calculator in calculators:
             try:
-                if isinstance(stat_calculator, GreedyProbsCalculator):
+                if self.context and isinstance(stat_calculator, GreedyProbsCalculator):                    
                     new_stats = stat_calculator(
-                        batch_stats, inp_texts, self.model, self.max_new_tokens, self.context
+                        batch_stats, inp_texts, self.model, self.max_new_tokens, [self.context]
                     )
                 else:
                     new_stats = stat_calculator(
