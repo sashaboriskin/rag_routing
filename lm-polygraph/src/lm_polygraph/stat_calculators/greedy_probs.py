@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .embeddings import get_embeddings_from_output
 from .stat_calculator import StatCalculator
@@ -74,6 +74,7 @@ class GreedyProbsCalculator(StatCalculator):
         self,
         dependencies: Dict[str, np.array],
         texts: List[str],
+        contexts: Optional[List[str]],
         model: WhiteboxModel,
         max_new_tokens: int = 100,
     ) -> Dict[str, np.ndarray]:
@@ -83,6 +84,7 @@ class GreedyProbsCalculator(StatCalculator):
         Parameters:
             dependencies (Dict[str, np.ndarray]): input statistics, can be empty (not used).
             texts (List[str]): Input texts batch used for model generation.
+            contexts (Optional[List[str]]): Optional contexts for each input text.
             model (Model): Model used for generation.
             max_new_tokens (int): Maximum number of new tokens at model generation. Default: 100.
         Returns:
@@ -95,7 +97,7 @@ class GreedyProbsCalculator(StatCalculator):
                 - 'attention' (List[List[np.array]]): attention maps at each token, if applicable to the model,
                 - 'greedy_log_likelihoods' (List[List[float]]): log-probabilities of the generated tokens.
         """
-        batch: Dict[str, torch.Tensor] = model.tokenize(texts)
+        batch: Dict[str, torch.Tensor] = model.tokenize(texts, contexts=contexts)
         batch = {k: v.to(model.device()) for k, v in batch.items()}
         with torch.no_grad():
             out = model.generate(

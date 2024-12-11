@@ -23,7 +23,7 @@ from transformers import (
 from lm_polygraph.utils.generation_parameters import GenerationParameters
 from lm_polygraph.utils.ensemble_utils.ensemble_generator import EnsembleGenerationMixin
 from lm_polygraph.utils.ensemble_utils.dropout import replace_dropout
-from prompts import assistant_system_prompt
+from prompts import w_context_user_prompt, w_context_system_prompt, wo_context_system_prompt
 
 log = logging.getLogger("lm_polygraph")
 
@@ -539,13 +539,16 @@ class WhiteboxModel(Model):
         return instance
 
     def tokenize(
-        self, texts: Union[List[str], List[List[Dict[str, str]]]]
+        self,
+        texts: Union[List[str], List[List[Dict[str, str]]]], 
+        contexts: Optional[Union[str, List[str]]] = None
     ) -> Dict[str, torch.Tensor]:
         """
         Tokenizes input texts batch into a dictionary using the model tokenizer.
 
         Parameters:
             texts (List[str]): list of input texts batch.
+            context (Optional[List[str]): Optional context or list of contexts.
         Returns:
             dict[str, torch.Tensor]: tensors dictionary obtained by tokenizing input texts batch.
         """
@@ -555,8 +558,13 @@ class WhiteboxModel(Model):
             formatted_texts = []
             for chat in texts:
                 if isinstance(chat, str):
-                    chat = [{"role": "user", "content": chat}, 
-                            {"role": "assistant", "content": assistant_system_prompt()}]
+                    if contexts is None:
+                        chat = [{"role": "user", "content": chat}, 
+                                {"role": "assistant", "content": wo_context_system_prompt()}]
+                    else:
+                        chat = [{"role": "user", "content": w_context_user_prompt(chat, contexts[0])}, 
+                                {"role": "assistant", "content": w_context_system_prompt()}]
+                        
                 formatted_chat = self.tokenizer.apply_chat_template(
                     chat, add_generation_prompt=True, tokenize=False
                 )
