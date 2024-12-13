@@ -2,3 +2,4 @@ seaborn==0.13.2
 openai==1.57.1
 python-dotenv==1.0.1
 transformer-lens==2.9.1
+jupyter==1.1.1
