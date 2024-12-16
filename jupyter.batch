@@ -2,15 +2,14 @@
 #SBATCH --job-name=[NLPR-4689]ue_scores
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=32gb
-#SBATCH --gres=gpu:1
-#Pick a random or predefined port
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=40gb
+#SBATCH --gres=gpu:1 
 port=$(shuf -i 6000-9999 -n 1)
 echo "port is $port"
- 
-#Start the notebook
-srun --container-image=artifactory.mts.ai/ml-docker/torch_2.2.1:nvcr \
+
+srun --container-image=artifactory.mts.ai/ml-docker/rag_routing:latest \
+--mpi=none \
 --no-container-entrypoint \
 --container-workdir=/home \
 --container-mount-home \

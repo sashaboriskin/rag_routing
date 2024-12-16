@@ -1,16 +1,8 @@
-FROM python:3.10-slim
+ARG FRAMEWORK=pytorch
+ARG TAG=latest
+FROM ${FRAMEWORK}/${FRAMEWORK}:${TAG} as base
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    g++ \
-    libffi-dev \
-    libxml2-dev \
-    libxslt-dev \
-    zlib1g-dev \
-    git \
-    bash \
-    && rm -rf /var/lib/apt/lists/*
+SHELL ["/bin/bash", "-c"]
 
 WORKDIR /app
 
@@ -18,7 +10,8 @@ COPY lm-polygraph ./lm-polygraph
 RUN pip install --upgrade pip && pip install -e ./lm-polygraph
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+
 CMD ["bash"]
