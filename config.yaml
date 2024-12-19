@@ -3,5 +3,5 @@ generation_config:
     temperature: 1
     top_p: 1
     
-model_id: "/share/nlp/chitchat/models/Llama-3.2-3B-Instruct/"
+model_id: "meta-llama/Llama-3.2-3B-Instruct"
 seed: 42
