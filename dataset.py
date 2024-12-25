@@ -38,11 +38,49 @@ class AbstractDataset(ABC):
         self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
         
         data = load_dataset(self.hf_path, split='validation').to_pandas()
+        data = self.truncate_context(data) 
         data = self.generate_answers(data)
         data = self.gpt_correctness(data)
         data.to_csv(self.file_path, index=False)
         return data
+        
+    def truncate_context(self, data):
+        """
+        This function needs to truncate context length. In transformer lens the max prompt length is 2048.
+        """
+        max_tokens = 2000
     
+        def truncate(row):
+            question = row['question']
+            context = row['context']
+    
+            while True:
+                messages = [
+                    {"role": "user", "content": w_context_user_prompt(question, context)},
+                    {"role": "system", "content": w_context_system_prompt()}
+                ]
+                question_template = self.tokenizer.apply_chat_template(
+                    messages, add_generation_prompt=True, tokenize=False
+                )
+                tokenized = self.tokenizer(
+                    question_template, return_tensors="pt", add_special_tokens=False
+                )
+                total_tokens = tokenized["input_ids"].shape[1]
+    
+                if total_tokens <= max_tokens:
+                    break
+    
+                context_tokens = self.tokenizer(
+                    context, return_tensors="pt", add_special_tokens=False
+                )["input_ids"][0]
+    
+                context_tokens = context_tokens[:-100]
+                context = self.tokenizer.decode(context_tokens, skip_special_tokens=True)
+                
+            return context
+    
+        data['context'] = data.apply(truncate, axis=1)
+        return data
 
     def gpt_correctness(self, df):
         for index, row in tqdm(df.iterrows()):
