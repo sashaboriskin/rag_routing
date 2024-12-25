@@ -12,8 +12,8 @@ def correctness_system_prompt():
 
 Evaluation criteria:
 
-- Score 0: If the model's answer is entirely incorrect, incomplete, lacks information, or includes extraneous details not relevant to the query.
-- Score 1: If the model's answer is entirely correct and sufficiently answers the query without unnecessary information.
+- Score 0: If the model's answer is entirely incorrect, lacks relevance, or provides no meaningful alignment with the reference answer.
+- Score 1: If the model's answer is entirely correct or at least contains any part from the reference answer, even if it is incomplete or misses some details. 
 
 Provide your answer strictly as a single digit: either 0 or 1. Do not include any additional text, explanation, or formatting."""
 
@@ -21,8 +21,8 @@ Provide your answer strictly as a single digit: either 0 or 1. Do not include an
 def correctness_user_prompt(question, golden_answer, model_answer):
     return f"""Evaluate the model's response using the following criteria:
 
-0: Incorrect, incomplete, lacks information, or includes irrelevant details.
-1: Correct, complete, and sufficiently answers the query without unnecessary details.
+0: Incorrect or provides no meaningful alignment with the reference answer.
+1: Is entirely correct or at least contains any part from the reference answer, even if it is incomplete.
 
 Respond strictly with a single digit: 0 or 1.
 
