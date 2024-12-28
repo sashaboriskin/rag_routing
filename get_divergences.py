@@ -81,28 +81,27 @@ def calculate_js_divergence(softmax1, softmax2):
 def calculate_divs_in_dataset(dataset, model, tokenizer, max_new_tokens=100) -> (list[torch.tensor], list[torch.tensor]):
     all_div_matrices = [] # To store layer-wise and token-wise divergence matrixs
     all_eot_div = []  # To store divergence values for <|eot_id|>
-    
+
     for _, row in tqdm(dataset.iterrows(), total=len(dataset)):
         text_w_context = tokenizer.apply_chat_template([
             {"role": "user", "content": w_context_user_prompt(row['question'], row['context'])},
             {"role": "system", "content": w_context_system_prompt()},
         ], tokenize=False, add_generation_prompt=True)
-        try:
-            text_w_context = model.to_tokens(text_w_context, prepend_bos=False).to(device)
-            logits_w_context = get_logits(text_w_context, model, max_new_tokens)[:-1] # shape: [num_new_tokens, n_layers, batch, vocab_size]
-            eot_logits_w_context = logits_w_context[-1] # shape: [1, n_layers, batch, vocab_size]
-            
-            text_wo_context = tokenizer.apply_chat_template([
-                {"role": "user", "content": row['question']},
-                {"role": "system", "content": wo_context_system_prompt()},
-            ], tokenize=False, add_generation_prompt=True)
-            
-            text_wo_context = model.to_tokens(text_wo_context, prepend_bos=False).to(device)
-            logits_wo_context = get_logits(text_wo_context, model, max_new_tokens)[:-1] # shape: [num_new_tokens, n_layers, batch, vocab_size]
-            eot_logits_wo_context = logits_wo_context[-1] # shape: [1, n_layers, batch, vocab_size]
-        except:
-            print('Skip')
-            continue
+   
+        text_w_context = model.to_tokens(text_w_context, prepend_bos=False).to(device)
+        logits = get_logits(text_w_context, model, max_new_tokens) # shape: [num_new_tokens, n_layers, batch, vocab_size]
+        logits_w_context = logits[:-1]
+        eot_logits_w_context = logits[-1] # shape: [1, n_layers, batch, vocab_size]
+        
+        text_wo_context = tokenizer.apply_chat_template([
+            {"role": "user", "content": row['question']},
+            {"role": "system", "content": wo_context_system_prompt()},
+        ], tokenize=False, add_generation_prompt=True)
+        
+        text_wo_context = model.to_tokens(text_wo_context, prepend_bos=False).to(device)
+        logits = get_logits(text_wo_context, model, max_new_tokens)[:-1] # shape: [num_new_tokens, n_layers, batch, vocab_size]
+        logits_wo_context = logits[:-1]
+        eot_logits_wo_context = logits[-1] # shape: [1, n_layers, batch, vocab_size]
             
         min_length = min(logits_w_context.shape[0], logits_wo_context.shape[0])
         logits_w_context = logits_w_context[:min_length] # shape: [min_num_new_tokens, n_layers, batch, vocab_size]
@@ -187,10 +186,10 @@ if __name__ == '__main__':
 
     for dataset, dataset_name in zip(
         (nq_dataset, wiki_multi_dataset, hot_pot_dataset, musique_dataset),
-        ('nq_dataset','wiki_multi_dataset', 'hot_pot_dataset', 'musique_dataset')
+        ('nq_dataset', 'wiki_multi_dataset', 'hot_pot_dataset', 'musique_dataset')
     ):
         print(f'Preproccesing {dataset_name}')
-
+        
         max_new_tokens = int(dataset['reference'].apply(len).mean())
         wo0_w1 = dataset[dataset['is_correct_w_context']==1][dataset['is_correct_wo_context']==0]
         wo0_w0 = dataset[dataset['is_correct_w_context']==0][dataset['is_correct_wo_context']==0]
@@ -200,5 +199,5 @@ if __name__ == '__main__':
             (wo0_w1, wo0_w0, wo1_w0, wo1_w1), 
             ('wo0_w1', 'wo0_w0', 'wo1_w0', 'wo1_w1')
         ):
-            test = agregate_div_dataset(subsample, model, tokenizer, max_new_tokens=max_new_tokens)
+            test = agregate_div_dataset(subsample, model, tokenizer, max_new_tokens=max_new_tokens)    
             test.to_csv(f'data/tl_divs_datasets/{dataset_name}_{subsample_name}_tl_div.csv')
