@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pickle
 import torch
 import torch.nn.functional as F
 from omegaconf import OmegaConf
@@ -105,35 +106,72 @@ def calculate_entropies_in_dataset(dataset, with_context, model, tokenizer, max_
         
     return all_entropies, all_eos, max_tokens
 
-def agregate_entropy_dataset(dataset, with_context, model, tokenizer, max_new_tokens=100):
+def agregate_entropy_dataset(dataset, dataset_name, subsample_name, with_context, model, tokenizer, max_new_tokens=100):
     """
-    
+    Aggregates entropy data across a dataset with confidence intervals (mean ± std).
     """
     all_entropies, all_eos, max_tokens = calculate_entropies_in_dataset(dataset, with_context, model, tokenizer, max_new_tokens)
+
+    with open(f'data/origin_entropies_wo_agg/all_entropies_{dataset_name}_{subsample_name}.pickle', 'wb') as file:
+        pickle.dump(all_entropies, file, protocol=pickle.HIGHEST_PROTOCOL)
     
-    # Create a tensor with NaN to align the lengths
+    with open(f'data/origin_entropies_wo_agg/all_eos_entropies_{dataset_name}_{subsample_name}.pickle', 'wb') as file:
+        pickle.dump(all_eos, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    # Create tensors with NaN for alignment
     padded_entropies = torch.full((len(all_entropies), max_tokens, model.cfg.n_layers), float('nan'))
     
     for i, entropy in enumerate(all_entropies):
         length = entropy.shape[0]
         padded_entropies[i, :length, :] = entropy
-    
-    # Calculating the mean value, ignoring NaN
-    aggregated_matrix = torch.nanmean(padded_entropies, dim=0)  # shape: [max_tokens, n_layers]
-    aggregated_eos = torch.stack(all_eos).mean(dim=0)  # shape: [n_layers]
 
-    df = pd.DataFrame(aggregated_matrix.T.numpy(), index=[f"Layer {i+1}" for i in range(model.cfg.n_layers)])
-    df.columns = [f"Token {i+1}" for i in range(max_tokens)]
-    df['EOS'] = aggregated_eos.numpy()
+    # Calculate mean and standard deviation, ignoring NaNs
+    mean_entropies = torch.nanmean(padded_entropies, dim=0)
+    std_entropies = torch.from_numpy(np.nanstd(padded_entropies, axis=0))
+
+    # Calculate mean and std for EOS tokens
+    aggregated_eos_mean = torch.stack(all_eos).mean(dim=0)
+    aggregated_eos_std = torch.stack(all_eos).std(dim=0)
     
-    # Add the mean row (average for each token and EOS Mean)
-    mean_row = df.mean(axis=0)
-    mean_row.name = "Mean"
-    df = pd.concat([df, mean_row.to_frame().T])
+    # Convert to a DataFrame with formatted mean ± std
+    def format_mean_std(mean_tensor, std_tensor):
+        return np.vectorize(lambda mean, std: f"{mean:.4f}±{std:.4f}")(mean_tensor.numpy(), std_tensor.numpy())
+
+    # Prepare formatted DataFrame
+    formatted_entropies = format_mean_std(mean_entropies.T, std_entropies.T)
+    formatted_eos = format_mean_std(aggregated_eos_mean, aggregated_eos_std)
+
+    # Compute mean and std across layers for each token
+    mean_across_layers = torch.nanmean(mean_entropies, dim=0)
+    std_across_layers = torch.from_numpy(np.nanstd(mean_entropies, axis=0))
+    formatted_mean_across_layers = format_mean_std(mean_across_layers, std_across_layers)
+
+    # Compute mean and std across tokens for each layer
+    mean_across_tokens = torch.nanmean(mean_entropies, dim=1)
+    std_across_tokens = torch.from_numpy(np.nanstd(mean_entropies, axis=1))
+    formatted_mean_across_tokens = format_mean_std(mean_across_tokens, std_across_tokens)
     
-    # Add the mean column (average for each layer)
-    df['Mean'] = df.mean(axis=1)
+    df = pd.DataFrame(formatted_entropies, index=[f"Layer {i+1}" for i in range(model.cfg.n_layers)],
+                      columns=[f"Token {i+1}" for i in range(max_tokens)])
+    df['EOS'] = formatted_eos
+    df['Mean'] = formatted_mean_across_layers
+    
+    # Add 'Mean' row (average across tokens)
+    mean_row = list(formatted_mean_across_tokens) + [format_mean_std(aggregated_eos_mean.mean(), aggregated_eos_std.mean())]
+    df.loc['Mean'] = mean_row
+
+    # Compute mean and std across layers for each token (Mean Column)
+    mean_across_layers = torch.nanmean(mean_entropies, dim=0)
+    std_across_layers = torch.from_numpy(np.nanstd(mean_entropies, axis=0))
+    formatted_mean_across_layers = list(format_mean_std(mean_across_layers, std_across_layers))
+
+    layer_token_mean = format_mean_std(mean_across_layers.mean(), std_across_layers.mean())
+
+    formatted_mean_across_layers.append(layer_token_mean)
+    df['Mean'] = formatted_mean_across_layers
+    
     return df
+
 
 if __name__ == "__main__":
     nq_dataset = NQDataset().data
@@ -170,8 +208,8 @@ if __name__ == "__main__":
             ('w_false', 'w_true', 'wo_false', 'wo_true')
         ):
             if 'wo' in subsample_name:
-                test = agregate_entropy_dataset(subsample, False, model, tokenizer, max_new_tokens)
+                test = agregate_entropy_dataset(subsample, dataset_name, subsample_name, False, model, tokenizer, max_new_tokens)
             else:
-                test = agregate_entropy_dataset(subsample, True, model, tokenizer, max_new_tokens)
-                
-            test.to_csv(f'data/tl_entropies_datasets/{dataset_name}_{subsample_name}_tl_entropy.csv')
+                test = agregate_entropy_dataset(subsample, dataset_name, subsample_name, True, model, tokenizer, max_new_tokens)
+            
+            test.to_csv(f'data/tl_mean_std_entropies_datasets/{dataset_name}_{subsample_name}_tl_entropy.csv')

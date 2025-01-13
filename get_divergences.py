@@ -78,7 +78,7 @@ def calculate_js_divergence(softmax1, softmax2):
     js_div = 0.5 * (kl1 + kl2)  # JS divergence
     return js_div
 
-def calculate_divs_in_dataset(dataset, model, tokenizer, max_new_tokens=100) -> (list[torch.tensor], list[torch.tensor]):
+def calculate_divs_in_dataset(dataset, model, tokenizer, max_new_tokens=100):
     all_div_matrices = [] # To store layer-wise and token-wise divergence matrixs
     all_eot_div = []  # To store divergence values for <|eot_id|>
 
@@ -137,34 +137,33 @@ def calculate_divs_in_dataset(dataset, model, tokenizer, max_new_tokens=100) -> 
 
 def agregate_div_dataset(dataset, model, tokenizer, max_new_tokens=100):
     all_div_matrices, all_eot_div = calculate_divs_in_dataset(dataset, model, tokenizer, max_new_tokens)
-    
     max_tokens = max(matrix.shape[1] for matrix in all_div_matrices)
-    aggregated_matrix = np.zeros((model.cfg.n_layers, max_tokens))
-    count_matrix = np.zeros((model.cfg.n_layers, max_tokens))
     
-    for matrix in all_div_matrices:
-        for layer_idx in range(model.cfg.n_layers):
-            for token_idx in range(matrix.shape[1]):
-                aggregated_matrix[layer_idx, token_idx] += matrix[layer_idx, token_idx]
-                count_matrix[layer_idx, token_idx] += 1
-                
-    aggregated_matrix /= np.maximum(count_matrix, 1)
-    
-    # Add <|eot_id|> divergences as the last column
+    # Create tensors with NaN for alignment
+    padded_matrices = torch.full((len(all_div_matrices), model.cfg.n_layers, max_tokens), float('nan'))
+
+    for i, matrix in enumerate(all_div_matrices):
+        length = matrix.shape[1]
+        padded_matrices[i, :, :length] = torch.tensor(matrix)
+
+    # Calculate mean, ignoring NaNs
+    aggregated_matrix = torch.nanmean(padded_matrices, dim=0).numpy()
     eot_kl_column = np.mean(all_eot_div, axis=0).reshape(-1, 1)
     aggregated_matrix = np.hstack([aggregated_matrix, eot_kl_column])
-    
+
     # Calculate mean for each column
     token_means = np.mean(aggregated_matrix, axis=0)
     
     # Create a DataFrame
-    columns = [f"{i+1}_token" for i in range(max_tokens)] + ["<|eot_id|>"]
+    columns = [f"{i+1}_token" for i in range(max_tokens)] + ["EOS"]
     index = [f"Layer_{i+1}" for i in range(model.cfg.n_layers)] + ["Mean"]
     aggregated_matrix = np.vstack([aggregated_matrix, token_means])
 
     df = pd.DataFrame(aggregated_matrix, columns=columns, index=index)
+    df["Mean"] = df.mean(axis=1)
     df.index.name = "Layer"
     return df
+
 
 if __name__ == '__main__':
     nq_dataset = NQDataset().data
