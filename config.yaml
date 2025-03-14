@@ -2,6 +2,13 @@ generation_config:
     do_sample: false
     temperature: 1
     top_p: 1
+
+dola_generation_config:
+    dola_layers: high
+    do_sample: false
+    temperature: 1
+    top_p: 1
     
 model_id: "meta-llama/Llama-3.2-3B-Instruct"
+batch_size: 32
 seed: 42
