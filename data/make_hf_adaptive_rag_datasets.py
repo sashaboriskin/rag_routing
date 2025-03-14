@@ -1,5 +1,5 @@
 """
-This script extracts supportive contexts from the Adaptive RAG datasets and save them in a CSV file.
+This script devides contexts into separate samplesfrom the Adaptive RAG datasets and save them in a CSV file.
 You can find preprocessed datasets here:
 https://huggingface.co/collections/aboriskin/adaptive-rag-supporting-context-674f1251dcbba84f93b4e9d1
 """

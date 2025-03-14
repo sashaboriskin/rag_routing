@@ -37,7 +37,7 @@ class AbstractDataset(ABC):
         self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_id)
         self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
         
-        data = load_dataset(self.hf_path, split='validation').to_pandas()
+        data = load_dataset(self.hf_path, split='test').to_pandas()
         data = self.truncate_context(data) 
         data = self.generate_answers(data)
         data = self.gpt_correctness(data)
@@ -162,7 +162,7 @@ class NQDataset(AbstractDataset):
     def __init__(self):
         super().__init__(
             hf_path='aboriskin/adaptive_rag_nq',
-            file_path='data/adaptive_rag_natural_questions.csv'
+            file_path='data/adaptive_rag_natural_questions_test.csv'
         )
 
 
@@ -170,7 +170,7 @@ class WikiMultiHopQADataset(AbstractDataset):
     def __init__(self):
         super().__init__(
             hf_path='aboriskin/adaptive_rag_2wikimultihopqa',
-            file_path='data/adaptive_rag_2wikimultihopqa.csv'
+            file_path='data/adaptive_rag_2wikimultihopqa_test.csv'
         )
 
 
@@ -178,7 +178,7 @@ class HotPotQADataset(AbstractDataset):
     def __init__(self):
         super().__init__(
             hf_path='aboriskin/adaptive_rag_hotpotqa',
-            file_path='data/adaptive_rag_hotpotqa.csv'
+            file_path='data/adaptive_rag_hotpotqa_test.csv'
         )
 
 
@@ -186,5 +186,5 @@ class MusiqueDataset(AbstractDataset):
     def __init__(self):
         super().__init__(
             hf_path='aboriskin/adaptive_rag_musique',
-            file_path='data/adaptive_rag_musique.csv'
+            file_path='data/adaptive_rag_musique_test.csv'
         )

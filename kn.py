@@ -24,7 +24,7 @@ def get_ff_layer(
     model: nn.Module,
     layer_idx: int,
     transformer_layers_attr: str = "model.layers",
-    ff_attrs: str = "mlp.gate_proj",
+    ff_attrs: str = "mlp.up_proj",
 ):
 
     transformer_layers = get_attributes(model, transformer_layers_attr)
@@ -82,7 +82,7 @@ def mlp_patch_layer(
     replacement_activations: Optional[torch.Tensor] = None,
     mode: str = "replace",
     transformer_layers_attr: str = "model.layers",
-    ff_attrs: str = "mlp.gate_proj",
+    ff_attrs: str = "mlp.up_proj",
     neurons: Optional[List[List[int]]] = None,
 ):
 
@@ -124,7 +124,7 @@ def mlp_unpatch_layer(
     model: nn.Module,
     layer_idx: int,
     transformer_layers_attr: str = "model.layers",
-    ff_attrs: str = "mlp.gate_proj",
+    ff_attrs: str = "mlp.up_proj",
 ):
     transformer_layers = get_attributes(model, transformer_layers_attr)
     layer = get_attributes(transformer_layers[layer_idx], ff_attrs)
@@ -138,7 +138,7 @@ def mlp_unpatch_layers(
     model: nn.Module,
     layer_indices,
     transformer_layers_attr: str = "model.layers",
-    ff_attrs: str = "mlp.gate_proj",
+    ff_attrs: str = "mlp.up_proj",
 ):
     for layer_idx in layer_indices:
         mlp_unpatch_layer(model, layer_idx, transformer_layers_attr, ff_attrs)
@@ -156,7 +156,7 @@ class KnowledgeNeurons:
 
         self.baseline_activations = None
         self.transformer_layers_attr = "model.layers"
-        self.input_ff_attr = "mlp.gate_proj"
+        self.input_ff_attr = "mlp.up_proj"
 
     def prepare_inputs(self, prompt: str, target: Optional[str] = None):
         encoded_input = self.tokenizer(prompt, return_tensors="pt").to(self.device)

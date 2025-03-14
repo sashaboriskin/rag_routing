@@ -10,16 +10,7 @@ import unicodedata
 from tqdm import tqdm
 from nltk.corpus import stopwords
 
-
-def read_json(path):
-    qa_data = []
-    f = open(path, 'r', encoding='utf-8')
-    for line in f.readlines():
-        qa_data.append(json.loads(line))
-    return qa_data
-
 def remove_punc(text):
-    # punc替换成 " ", 匹配时空格比空字符好 
     exclude = set(string.punctuation)
     return "".join([ch if ch in text and ch not in exclude else ' ' for ch in text])
 
@@ -40,8 +31,6 @@ def get_clean(data, clean_data):
 def get_data_before_and_after_prompt(origin_data, prompt_data, criterion):
     new_res = []
     for sample in origin_data:
-        # if 'idx' not in prompt_data[sample['nq_idx']]:
-        #     continue
         if criterion == 'same':
             if sample['Giveup_origin'] == prompt_data[sample['nq_idx']]['Giveup']:
                 new_res.append(sample)
