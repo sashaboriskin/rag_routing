@@ -44,7 +44,6 @@ class AbstractDataset(ABC):
         self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
         
         data = load_dataset(self.hf_path, split='train').to_pandas() # only one split
-        data = data.head(200)
         data = self.generate_answers(data)
         data = self.generate_dola_answers(data)
         # data = self.gpt_correctness(data)
