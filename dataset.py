@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import os
+import re
 
 from datasets import load_dataset
 import torch
@@ -43,6 +44,7 @@ class AbstractDataset(ABC):
         self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
         
         data = load_dataset(self.hf_path, split='train').to_pandas() # only one split
+        data = data.head(200)
         data = self.generate_answers(data)
         data = self.generate_dola_answers(data)
         # data = self.gpt_correctness(data)
@@ -94,31 +96,15 @@ class AbstractDataset(ABC):
 
     #     return df
     
-    def calculate_max_new_tokens(self, df):
-        try:
-            reference_tokens = self.tokenizer(
-                df['reference'].tolist(), 
-                padding=False, 
-                truncation=False, 
-                return_tensors=None
-            )
-            avg_token_count = sum(len(ids) for ids in reference_tokens['input_ids']) / len(reference_tokens['input_ids'])
-            max_new_tokens = int(avg_token_count * 1.2)
-        except:
-            max_new_tokens = 100
 
-        return max_new_tokens
     
-    # def clean_generated_text(self, text):
-    #     # """Очищает сгенерированный текст от артефактов"""
-    #     # # Удаляем префиксы ассистента, если они есть
-    #     # if "assistant" in text.lower():
-    #     #     text = text.split("assistant", 1)[-1].strip()
-        
-    #     # # Удаляем начальные двоеточия или другие артефакты
-    #     # text = text.lstrip(": ")
-        
-    #     return text
+    def extract_assistant_response(self, full_text):
+        last_assistant_index = full_text.lower().rfind("assistant")
+        if last_assistant_index != -1:
+            response = full_text[last_assistant_index + len("assistant"):].strip()
+            response = response.lstrip(": \n")
+            return response
+        return full_text.strip()
     
     def generate_answers(self, df):
         max_new_tokens = 20 # self.calculate_max_new_tokens(df)
@@ -161,10 +147,7 @@ class AbstractDataset(ABC):
                 padding=True,
                 return_tensors="pt",
                 add_special_tokens=False,
-                pad_to_multiple_of=8
             ).to(self.device)
-            
-            input_lens = tokenized_inputs["attention_mask"].sum(dim=1)
             
             outputs = self.model.generate(
                 **tokenized_inputs,
@@ -172,13 +155,8 @@ class AbstractDataset(ABC):
                 generation_config=self.generation_config,
             )
             
-            batch_answers = [
-                self.tokenizer.decode(
-                    output[input_len:], 
-                    skip_special_tokens=True
-                )
-                for output, input_len in zip(outputs, input_lens)
-            ]
+            full_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            batch_answers = [self.extract_assistant_response(text) for text in full_texts]
             wo_context_answers.extend(batch_answers)
         
         w_context_answers = []
@@ -189,10 +167,7 @@ class AbstractDataset(ABC):
                 padding=True,
                 return_tensors="pt",
                 add_special_tokens=False,
-                pad_to_multiple_of=8
             ).to(self.device)
-            
-            input_lens = tokenized_inputs["attention_mask"].sum(dim=1)
             
             outputs = self.model.generate(
                 **tokenized_inputs,
@@ -200,13 +175,8 @@ class AbstractDataset(ABC):
                 generation_config=self.generation_config,
             )
             
-            batch_answers = [
-                self.tokenizer.decode(
-                    output[input_len:], 
-                    skip_special_tokens=True
-                )
-                for output, input_len in zip(outputs, input_lens)
-            ]
+            full_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            batch_answers = [self.extract_assistant_response(text) for text in full_texts]
             w_context_answers.extend(batch_answers)
         
         df['our_answer_wo_context'] = wo_context_answers
@@ -215,7 +185,7 @@ class AbstractDataset(ABC):
         return df
     
     def generate_dola_answers(self, df):
-        max_new_tokens = self.calculate_max_new_tokens(df)
+        max_new_tokens = 20 # self.calculate_max_new_tokens(df)
             
         dola_inputs = []
         for _, row in tqdm(df.iterrows(), total=len(df), desc="Preparing DOLA inputs"):
@@ -236,10 +206,7 @@ class AbstractDataset(ABC):
                 padding=True,
                 return_tensors="pt",
                 add_special_tokens=False,
-                pad_to_multiple_of=8
             ).to(self.device)
-            
-            input_lens = tokenized_inputs["attention_mask"].sum(dim=1)
             
             outputs = self.model.generate(
                 **tokenized_inputs,
@@ -247,17 +214,11 @@ class AbstractDataset(ABC):
                 generation_config=self.dola_generation_config,
             )
             
-            batch_answers = [
-                self.tokenizer.decode(
-                        output[input_len:], 
-                        skip_special_tokens=True
-                    )
-                for output, input_len in zip(outputs, input_lens)
-            ]
+            full_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            batch_answers = [self.extract_assistant_response(text) for text in full_texts]                
             dola_answers.extend(batch_answers)
         
         df['our_answer_dola'] = dola_answers
-        
         return df
 
 
