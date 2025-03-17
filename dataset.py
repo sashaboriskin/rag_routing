@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 import os
 import re
 
@@ -37,15 +37,14 @@ class AbstractDataset(ABC):
         self.dola_generation_config = GenerationConfig(**self.cfg.dola_generation_config)
         
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_id, padding_side="left")
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             
         self.model = AutoModelForCausalLM.from_pretrained(self.cfg.model_id).to(self.device)
         
-        data = load_dataset(self.hf_path, split='train').to_pandas() # only one split
+        data = load_dataset(self.hf_path, split="train").to_pandas() # only one split
         data = self.generate_answers(data)
-        data = self.generate_dola_answers(data)
         # data = self.gpt_correctness(data)
         data.to_csv(self.file_path, index=False)
         return data
@@ -94,130 +93,84 @@ class AbstractDataset(ABC):
     #         df.loc[index, 'is_correct_dola'] = is_correct_dola
 
     #     return df
-    
 
-    
-    def extract_assistant_response(self, full_text):
-        last_assistant_index = full_text.lower().rfind("assistant")
-        if last_assistant_index != -1:
-            response = full_text[last_assistant_index + len("assistant"):].strip()
-            response = response.lstrip(": \n")
-            return response
-        return full_text.strip()
-    
     def generate_answers(self, df):
-        max_new_tokens = 20 # self.calculate_max_new_tokens(df)
-        
-        #########################################################
-        ############## 1. Prepare inputs ########################
-        #########################################################
+        """
+        Generates answers in three modes:
+        1. Without context
+        2. With context
+        3. DOLA without context
+        """
+        generation_settings = {
+            "wo_context": {
+                "system_prompt_func": wo_context_system_prompt,
+                "user_prompt_func": lambda q, c: q,  # ignore context
+                "gen_config": self.generation_config,
+                "out_column": "our_answer_wo_context"
+            },
+            "w_context": {
+                "system_prompt_func": w_context_system_prompt,
+                "user_prompt_func": lambda q, c: w_context_user_prompt(q, c),
+                "gen_config": self.generation_config,
+                "out_column": "our_answer_w_context"
+            },
+            "dola": {
+                "system_prompt_func": wo_context_system_prompt,
+                "user_prompt_func": lambda q, c: q,  # ignore context
+                "gen_config": self.dola_generation_config,
+                "out_column": "our_answer_dola"
+            }
+        }
+        max_new_tokens = 20
 
-        wo_context_inputs = []
-        for _, row in tqdm(df.iterrows(), total=len(df), desc="Preparing wo_context inputs"):
-            messages = [
-                {"role": "system", "content": wo_context_system_prompt()},
-                {"role": "user", "content": row['question']}
-            ]
-            input_str = self.tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False
-            )
-            wo_context_inputs.append(input_str)
-        
-        w_context_inputs = []
-        for _, row in tqdm(df.iterrows(), total=len(df), desc="Preparing w_context inputs"):
-            messages = [
-                {"role": "system", "content": w_context_system_prompt()},
-                {"role": "user", "content": w_context_user_prompt(row['question'], row['context'])}
-            ]
-            input_str = self.tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False
-            )
-            w_context_inputs.append(input_str)
-        
-        #########################################################
-        ############## 2. Generate answers ######################
-        #########################################################
+        for setting_name, conf in generation_settings.items():
+            
+            system_prompt_func = conf["system_prompt_func"]
+            user_prompt_func = conf["user_prompt_func"]
+            gen_config = conf["gen_config"]
+            out_column = conf["out_column"]
+            batch_size = self.cfg.batch_size if setting_name != "w_context" else self.cfg.batch_size // 4
 
-        wo_context_answers = []
-        for i in tqdm(range(0, len(wo_context_inputs), self.cfg.batch_size), desc="Generating wo_context answers"):
-            batch_inputs = wo_context_inputs[i:i+self.cfg.batch_size]
-            tokenized_inputs = self.tokenizer(
-                batch_inputs,
-                padding=True,
-                return_tensors="pt",
-                add_special_tokens=False,
-            ).to(self.device)
+            prompts = []
+            for _, row in tqdm(df.iterrows(), total=len(df), desc=f"Preparing inputs"):
+                system_text = system_prompt_func()
+                user_text = user_prompt_func(row["question"], row.get("context", ""))
+                
+                messages = [
+                    {"role": "system", "content": system_text},
+                    {"role": "user", "content": user_text}
+                ]
+                input_str = self.tokenizer.apply_chat_template(
+                    messages, add_generation_prompt=True, tokenize=False
+                )
+                prompts.append(input_str)
+
+            answers = []
+            for i in tqdm(range(0, len(prompts), batch_size), desc=setting_name):
+                batch_inputs = prompts[i : i + batch_size]
+                
+                tokenized_inputs = self.tokenizer(
+                    batch_inputs,
+                    padding=True,
+                    return_tensors="pt",
+                    add_special_tokens=False
+                ).to(self.device)
+                
+                outputs = self.model.generate(
+                    **tokenized_inputs,
+                    max_new_tokens=max_new_tokens,
+                    generation_config=gen_config,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                )
+                
+                for j, out_ids in enumerate(outputs):
+                    prompt_len_tokens = tokenized_inputs["input_ids"][j].shape[0]
+                    gen_ids = out_ids[prompt_len_tokens:]
+                    answer_text = self.tokenizer.decode(gen_ids, skip_special_tokens=True)
+                    answers.append(answer_text)
             
-            outputs = self.model.generate(
-                **tokenized_inputs,
-                max_new_tokens=max_new_tokens,
-                generation_config=self.generation_config,
-            )
-            
-            full_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            batch_answers = [self.extract_assistant_response(text) for text in full_texts]
-            wo_context_answers.extend(batch_answers)
+            df[out_column] = answers
         
-        w_context_answers = []
-        for i in tqdm(range(0, len(w_context_inputs), self.cfg.batch_size), desc="Generating w_context answers"):
-            batch_inputs = w_context_inputs[i:i+self.cfg.batch_size]
-            tokenized_inputs = self.tokenizer(
-                batch_inputs,
-                padding=True,
-                return_tensors="pt",
-                add_special_tokens=False,
-            ).to(self.device)
-            
-            outputs = self.model.generate(
-                **tokenized_inputs,
-                max_new_tokens=max_new_tokens,
-                generation_config=self.generation_config,
-            )
-            
-            full_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            batch_answers = [self.extract_assistant_response(text) for text in full_texts]
-            w_context_answers.extend(batch_answers)
-        
-        df['our_answer_wo_context'] = wo_context_answers
-        df['our_answer_w_context'] = w_context_answers
-        
-        return df
-    
-    def generate_dola_answers(self, df):
-        max_new_tokens = 20 # self.calculate_max_new_tokens(df)
-            
-        dola_inputs = []
-        for _, row in tqdm(df.iterrows(), total=len(df), desc="Preparing DOLA inputs"):
-            messages = [
-                {"role": "system", "content": wo_context_system_prompt()},
-                {"role": "user", "content": row['question']}
-            ]
-            input_str = self.tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False
-            )
-            dola_inputs.append(input_str)
-        
-        dola_answers = []
-        for i in tqdm(range(0, len(dola_inputs), self.cfg.batch_size), desc="Generating DOLA answers"):
-            batch_inputs = dola_inputs[i:i+self.cfg.batch_size]
-            tokenized_inputs = self.tokenizer(
-                batch_inputs,
-                padding=True,
-                return_tensors="pt",
-                add_special_tokens=False,
-            ).to(self.device)
-            
-            outputs = self.model.generate(
-                **tokenized_inputs,
-                max_new_tokens=max_new_tokens,
-                generation_config=self.dola_generation_config,
-            )
-            
-            full_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            batch_answers = [self.extract_assistant_response(text) for text in full_texts]                
-            dola_answers.extend(batch_answers)
-        
-        df['our_answer_dola'] = dola_answers
         return df
 
 
